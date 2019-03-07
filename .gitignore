@@ -1,3 +1,9 @@
+phase1/
+data/
+log/
+infer/
+*.dat
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -215,4 +215,4 @@ def infer(ckpt_path):
 
 if __name__ == '__main__':
     # train()
-    infer('./log/2019.03.07-11:39:59/dense121_model_28.pth')
+    infer('./log/dense121/dense121_model_28.pth')

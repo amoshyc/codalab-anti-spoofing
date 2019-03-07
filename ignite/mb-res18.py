@@ -86,17 +86,10 @@ class Model(nn.Module):
         self.dep_cnn = self.resnet18(1)
         self.ifr_cnn = self.resnet18(1)
         self.fuse = nn.Sequential(
-            nn.Conv2d(512 * 3, 256, (3, 3), padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 64, (1, 1)),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((1, 1)),
             Flatten(),
-            nn.Linear(64, 32),
+            nn.Linear(512 * 3, 256),
             nn.ReLU(inplace=True),
-            nn.Linear(32, 1),
+            nn.Linear(256, 1),
             nn.Sigmoid(),
         )
     
@@ -117,7 +110,8 @@ class Model(nn.Module):
             net.layer1,
             net.layer2,
             net.layer3,
-            net.layer4
+            net.layer4,
+            nn.AdaptiveAvgPool2d((1, 1)),
         )
         
 

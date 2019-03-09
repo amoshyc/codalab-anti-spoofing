@@ -1,8 +1,9 @@
-phase1/
 data/
 log/
+raw/
 infer/
 *.dat
+*.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

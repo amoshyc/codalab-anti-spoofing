@@ -1,0 +1,11 @@
+{
+    "python.pythonPath": "/home/amoshyc/miniconda3/envs/pytorch/bin/python",
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/**": true,
+        "**/data/**": true,
+        "**/log/**": true,
+        "**/raw/**": true,
+    }
+}

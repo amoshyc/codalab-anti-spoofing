@@ -4,6 +4,7 @@ from datetime import datetime
 from collections import defaultdict
 
 import numpy as np
+import pandas as pd
 from PIL import Image
 from skimage import morphology
 import matplotlib as mpl
@@ -15,7 +16,6 @@ plt.style.use('seaborn')
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torchvision.models import resnet18
 from torchvision.utils import save_image
 from torchvision.transforms import functional as tf
 from torch.utils.data import DataLoader, Subset, ConcatDataset
@@ -27,6 +27,8 @@ from ignite.engine import create_supervised_evaluator
 from ignite.metrics import RunningAverage, Loss, Accuracy
 from ignite.handlers import ModelCheckpoint
 from ignite.contrib.handlers import ProgressBar
+
+from pretrainedmodels import se_resnext50_32x4d
 
 seed = 999
 random.seed(seed)
@@ -70,7 +72,6 @@ class Data:
         lbl = torch.tensor([lbl]).float()
         return inp, lbl
 
-
 class Flatten(nn.Module):
     def __init__(self):
         super().__init__()
@@ -78,41 +79,35 @@ class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
 
-
 class Model(nn.Module):
     def __init__(self):
         super().__init__()
-        self.rgb_cnn = self.resnet18(3)
-        self.dep_cnn = self.resnet18(1)
-        self.ifr_cnn = self.resnet18(1)
-        self.fuse = nn.Sequential(
-            Flatten(),
-            nn.Linear(512 * 3, 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 1),
-            nn.Sigmoid(),
-        )
-    
-    def forward(self, inp_b):
-        fmp_rgb_b = self.rgb_cnn(inp_b[:, 0:3])
-        fmp_dep_b = self.dep_cnn(inp_b[:, 3:4])
-        fmp_ifr_b = self.ifr_cnn(inp_b[:, 4:5])
-        fmp_b = torch.cat([fmp_rgb_b, fmp_dep_b, fmp_ifr_b], dim=1)
-        out_b = self.fuse(fmp_b)
-        return out_b
-
-    def resnet18(self, nc):
-        net = resnet18(pretrained=False)
-        return nn.Sequential(
-            nn.Conv2d(nc, 64, (7, 7), padding=3),
-            net.bn1,
-            net.relu,
-            net.layer1,
-            net.layer2,
-            net.layer3,
-            net.layer4,
+        senet = se_resnext50_32x4d(pretrained='imagenet')
+        self.features = nn.Sequential(
+            nn.Sequential(
+                nn.Conv2d(5, 64, (7, 7), stride=2, padding=3, bias=False),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d((3, 3), stride=2)
+            ),
+            senet.layer1,
+            senet.layer2,
+            senet.layer3,
+            senet.layer4,
             nn.AdaptiveAvgPool2d((1, 1)),
         )
+        self.regressor = nn.Sequential(
+            Flatten(),
+            nn.Linear(2048, 256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 1),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        x = self.features(x)
+        x = self.regressor(x)
+        return x
         
 
 def train():
@@ -124,12 +119,12 @@ def train():
     ])
     train_loader = DataLoader(train_set, 32, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_set, 32, shuffle=True, num_workers=4)
-    visul_loader = DataLoader(visul_set, 25, shuffle=True, num_workers=4)
+    visul_loader = DataLoader(visul_set, 10, shuffle=True, num_workers=4)
 
     device = torch.device('cuda')
     model = Model()
     criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=3e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-5)
 
     log_dir = Path('./log/') / f'{datetime.now():%Y.%m.%d-%H:%M:%S}'
     log_dir.mkdir(parents=True)
@@ -146,7 +141,8 @@ def train():
     metric = util.MyMetric(criterion)
     metric.attach(inferer, 'metric')
 
-    ckpt = ModelCheckpoint(str(log_dir), 'dense121', save_interval=1, n_saved=50)
+    ckpt = ModelCheckpoint(str(log_dir), 'dense121', 
+        save_interval=1, n_saved=50, save_as_state_dict=True)
     trainer.add_event_handler(Events.EPOCH_COMPLETED, ckpt, {
         'model': model
     })
@@ -196,11 +192,12 @@ def train():
                 out_b,
             ], dim=0), epoch_dir / f'{i:03d}.png', pad_value=1, nrow=N)
         
+
     trainer.run(train_loader, max_epochs=30)
 
 
 def infer(ckpt_path):
-    txt_path = '../raw/test_public_list.txt'
+    txt_path = '../raw/val_public_list.txt'
     test_data = Data('../raw/', txt_path)
     test_loader = DataLoader(test_data, 32, shuffle=False, num_workers=4)
 
@@ -233,6 +230,7 @@ def infer(ckpt_path):
     fig.savefig(str(pred_dir / 'hist.svg'))
     plt.close()
 
+
 if __name__ == '__main__':
-    train()
-    infer('')
+    # train()
+    infer('./zenet.pth')
